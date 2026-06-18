@@ -20,8 +20,9 @@ import { ru, enUS } from 'date-fns/locale';
 const STATUS_LABELS: Record<IssueStatus, { ru: string; en: string; emoji: string; next?: IssueStatus }> = {
   new: { ru: 'Новая', en: 'New', emoji: '🔵', next: 'reviewing' },
   reviewing: { ru: 'На рассмотрении', en: 'Reviewing', emoji: '🟡', next: 'in_progress' },
-  in_progress: { ru: 'В процессе', en: 'In Progress', emoji: '🟠', next: 'done' },
-  pending_verification: { ru: 'На проверке', en: 'Verifying', emoji: '🟣', next: 'done' },
+  in_progress: { ru: 'В процессе', en: 'In Progress', emoji: '🟠', next: 'pending_verification' },
+  pending_verification: { ru: 'На проверке', en: 'Verifying', emoji: '🟣' },
+  disputed: { ru: 'Оспорено', en: 'Disputed', emoji: '🔴', next: 'in_progress' },
   done: { ru: 'Выполнено', en: 'Done', emoji: '🟢' },
 };
 
