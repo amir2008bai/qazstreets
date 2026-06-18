@@ -123,10 +123,10 @@ export default function ProfilePage() {
 
         {/* Ранг */}
         <div className="card p-4 mb-4 flex items-center gap-3">
-          <div className="text-3xl">{rank.icon}</div>
+          <div className="text-3xl">{rank.emoji}</div>
           <div>
-            <p className="font-semibold text-sm" style={{ color: 'var(--text)' }}>{rank.title}</p>
-            <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{rank.description}</p>
+            <p className="font-semibold text-sm" style={{ color: 'var(--text)' }}>{rank.labelRu}</p>
+            <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{rank.labelEn}</p>
           </div>
         </div>
 
