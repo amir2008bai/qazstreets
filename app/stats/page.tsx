@@ -88,12 +88,20 @@ export default function StatsPage() {
 
   // Реальные данные по городам
   const cityNames = Array.from(new Set(issues.map(i => i.city)));
-  const cityData = cityNames.map(city => ({
-    name: city,
-    total: issues.filter(i => i.city === city).length,
-    resolved: issues.filter(i => i.city === city && i.status === 'done').length,
-    in_progress: issues.filter(i => i.city === city && (i.status === 'in_progress' || i.status === 'pending_verification')).length,
-  }));
+  const cityData = cityNames.map(city => {
+    const cityIssues = issues.filter(i => i.city === city);
+    const cityResolved = cityIssues.filter(i => i.status === 'done' && i.resolved_at);
+    const cityAvgDays = cityResolved.length > 0
+      ? Math.round(cityResolved.reduce((s, i) => s + (new Date(i.resolved_at!).getTime() - new Date(i.created_at).getTime()) / 86400000, 0) / cityResolved.length)
+      : 0;
+    return {
+      name: city,
+      total: cityIssues.length,
+      resolved: cityIssues.filter(i => i.status === 'done').length,
+      in_progress: cityIssues.filter(i => i.status === 'in_progress' || i.status === 'pending_verification').length,
+      avg_resolution_days: cityAvgDays,
+    };
+  });
 
   const pieData = [
     { name: isRu ? 'Выполнено' : 'Done', value: resolved, color: '#22C55E' },
