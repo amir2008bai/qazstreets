@@ -553,7 +553,7 @@ export default function IssuePage() {
                     <div className="flex flex-col items-center">
                       <div
                         className="w-3 h-3 rounded-full border-2 border-white"
-                        style={{ background: STATUS_COLORS[change.new_status] }}
+                        style={{ background: STATUS_COLORS[change.new_status as keyof typeof STATUS_COLORS] }}
                       />
                       {i < statusHistory.length - 1 && (
                         <div className="w-0.5 flex-1 mt-1" style={{ background: 'var(--border)' }} />
