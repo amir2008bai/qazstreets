@@ -495,6 +495,8 @@ export default function ReportPage() {
             <p style={{ color:'var(--text-secondary)' }}>{t('report_form.blocked_photo_hint')}</p>
           </div>
         )}
+
+        {aiResult.duplicate && (
           <div className="rounded-[10px] p-3 mb-4 text-left text-xs" style={{ background:'var(--bg)', border:'1px solid var(--border)' }}>
             <p style={{ color:'var(--text-secondary)' }}>{t('report_form.blocked_duplicate')}</p>
             <Link href={`/issue/${aiResult.duplicate.issue_id}`} className="text-accent font-semibold">
