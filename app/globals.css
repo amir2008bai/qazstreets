@@ -1,0 +1,124 @@
+/* app/globals.css */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: #FFFFFF;
+  --surface: #F5F5F5;
+  --surface-2: #EBEBEB;
+  --text: #1A1A1A;
+  --text-secondary: #6B7280;
+  --border: #E5E7EB;
+  --accent: #FC3F1D;
+  --accent-hover: #E83518;
+}
+
+.dark {
+  --bg: #1A1A1A;
+  --surface: #2A2A2A;
+  --surface-2: #333333;
+  --text: #F9FAFB;
+  --text-secondary: #9CA3AF;
+  --border: #3F3F3F;
+  --accent: #FC3F1D;
+  --accent-hover: #E83518;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: 'Inter', system-ui, sans-serif;
+  background-color: var(--bg);
+  color: var(--text);
+  transition: background-color 0.2s, color 0.2s;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 2GIS MapGL overrides */
+.__mapgljs_label,
+.mapgl-canvas-container {
+  font-family: 'Inter', sans-serif !important;
+}
+
+/* Убираем лого 2ГИС (опционально, по условиям лицензии) */
+.mapgl-ctrl-logo {
+  display: none !important;
+}
+
+/* Аттрибуция */
+.mapgl-ctrl-attrib {
+  font-size: 10px !important;
+  opacity: 0.6;
+}
+
+/* Курсор на кастомных маркерах 2ГИС */
+.mapgl-marker {
+  cursor: pointer;
+}
+
+/* Bottom sheet animation */
+@keyframes slideUp {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+.bottom-sheet-enter {
+  animation: slideUp 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--surface-2);
+  border-radius: 3px;
+}
+
+/* Utility */
+.card {
+  background: var(--bg);
+  border-radius: 16px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+  border: 1px solid var(--border);
+}
+
+.dark .card {
+  box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+}
+
+.btn-accent {
+  background-color: var(--accent);
+  color: white;
+  border-radius: 12px;
+  font-weight: 600;
+  transition: background-color 0.15s, transform 0.1s;
+}
+
+.btn-accent:hover {
+  background-color: var(--accent-hover);
+}
+
+.btn-accent:active {
+  transform: scale(0.97);
+}
+
+.status-badge {
+  padding: 3px 10px;
+  border-radius: 99px;
+  font-size: 12px;
+  font-weight: 600;
+}
