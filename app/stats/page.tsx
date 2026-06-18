@@ -4,7 +4,7 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import Header from '@/components/Header';
-import { MOCK_STATS, MOCK_USERS, getVolunteerRank } from '@/lib/mockData';
+import { getVolunteerRank } from '@/lib/mockData';
 import { useIssues } from '@/lib/issuesStore';
 import { CATEGORIES, DANGER_COLORS } from '@/types';
 import {
@@ -59,34 +59,40 @@ export default function StatsPage() {
     return '#EF4444';
   };
 
-  const total = MOCK_STATS.reduce((s, c) => s + c.total, 0);
-  const resolved = MOCK_STATS.reduce((s, c) => s + c.resolved, 0);
-  const inProgress = MOCK_STATS.reduce((s, c) => s + c.in_progress, 0);
-  const avgDays = Math.round(MOCK_STATS.reduce((s, c) => s + c.avg_resolution_days, 0) / MOCK_STATS.length);
+  const filteredIssues = selectedCity === 'all' ? issues : issues.filter(i => i.city === selectedCity);
 
-  const topVolunteers = MOCK_USERS
-    .filter(u => u.role === 'volunteer')
-    .sort((a, b) => b.resolved_count - a.resolved_count);
+  const total = filteredIssues.length;
+  const resolved = filteredIssues.filter(i => i.status === 'done').length;
+  const inProgress = filteredIssues.filter(i => i.status === 'in_progress' || i.status === 'pending_verification').length;
+  const resolvedWithDates = filteredIssues.filter(i => i.status === 'done' && i.resolved_at);
+  const avgDays = resolvedWithDates.length > 0
+    ? Math.round(resolvedWithDates.reduce((s, i) => s + (new Date(i.resolved_at!).getTime() - new Date(i.created_at).getTime()) / 86400000, 0) / resolvedWithDates.length)
+    : 0;
 
-  // Aggregate categories data
-  const catData = CATEGORIES.map(cat => {
-    const count = MOCK_STATS.reduce((sum, city) => {
-      if (selectedCity !== 'all' && city.city !== selectedCity) return sum;
-      const found = city.top_categories.find(c => c.category === cat.id);
-      return sum + (found?.count || 0);
-    }, 0);
-    return {
-      name: cat.emoji + ' ' + (isRu ? cat.labelRu : cat.labelEn).split(' ')[0],
-      count,
-      emoji: cat.emoji,
-    };
-  }).filter(d => d.count > 0).sort((a, b) => b.count - a.count);
+  // Реальные волонтёры из заявок
+  const volunteerMap = new Map<string, { name: string; avatar_url: string | null; resolved_count: number; points: number }>();
+  issues.filter(i => i.status === 'done' && i.resolver_id).forEach(i => {
+    const key = i.resolver_id!;
+    const ex = volunteerMap.get(key);
+    if (ex) { ex.resolved_count++; ex.points++; }
+    else volunteerMap.set(key, { name: i.resolver_name ?? 'Волонтёр', avatar_url: null, resolved_count: 1, points: 1 });
+  });
+  const topVolunteers = Array.from(volunteerMap.values()).sort((a, b) => b.resolved_count - a.resolved_count).slice(0, 5);
 
-  const cityData = MOCK_STATS.map(c => ({
-    name: c.city,
-    total: c.total,
-    resolved: c.resolved,
-    in_progress: c.in_progress,
+  // Реальные категории из заявок
+  const catData = CATEGORIES.map(cat => ({
+    name: cat.emoji + ' ' + (isRu ? cat.labelRu : cat.labelEn).split(' ')[0],
+    count: filteredIssues.filter(i => i.category === cat.id).length,
+    emoji: cat.emoji,
+  })).filter(d => d.count > 0).sort((a, b) => b.count - a.count);
+
+  // Реальные данные по городам
+  const cityNames = Array.from(new Set(issues.map(i => i.city)));
+  const cityData = cityNames.map(city => ({
+    name: city,
+    total: issues.filter(i => i.city === city).length,
+    resolved: issues.filter(i => i.city === city && i.status === 'done').length,
+    in_progress: issues.filter(i => i.city === city && (i.status === 'in_progress' || i.status === 'pending_verification')).length,
   }));
 
   const pieData = [
@@ -141,16 +147,16 @@ export default function StatsPage() {
             >
               🇰🇿 {t('stats.all_kazakhstan')}
             </button>
-            {MOCK_STATS.map(s => (
+            {cityNames.map(s => (
               <button
-                key={s.city}
-                onClick={() => setSelectedCity(s.city)}
+                key={s}
+                onClick={() => setSelectedCity(s)}
                 className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${
-                  selectedCity === s.city ? 'border-accent text-accent' : 'border-[var(--border)]'
+                  selectedCity === s ? 'border-accent text-accent' : 'border-[var(--border)]'
                 }`}
-                style={{ color: selectedCity === s.city ? undefined : 'var(--text-secondary)' }}
+                style={{ color: selectedCity === s ? undefined : 'var(--text-secondary)' }}
               >
-                {s.city}
+                {s}
               </button>
             ))}
           </div>
@@ -329,10 +335,10 @@ export default function StatsPage() {
               {t('stats.by_city')}
             </h2>
             <div className="space-y-3">
-              {MOCK_STATS.map(city => (
-                <div key={city.city}>
+              {cityData.map(city => (
+                <div key={city.name}>
                   <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-sm font-medium" style={{ color: 'var(--text)' }}>{city.city}</span>
+                    <span className="text-sm font-medium" style={{ color: 'var(--text)' }}>{city.name}</span>
                     <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
                       {city.total} {t('map.issues_count')}
                     </span>
@@ -342,14 +348,14 @@ export default function StatsPage() {
                       <div
                         className="h-full"
                         style={{
-                          width: `${(city.resolved / city.total) * 100}%`,
+                          width: `${city.total > 0 ? (city.resolved / city.total) * 100 : 0}%`,
                           background: '#22C55E',
                         }}
                       />
                       <div
                         className="h-full"
                         style={{
-                          width: `${(city.in_progress / city.total) * 100}%`,
+                          width: `${city.total > 0 ? (city.in_progress / city.total) * 100 : 0}%`,
                           background: '#F97316',
                         }}
                       />

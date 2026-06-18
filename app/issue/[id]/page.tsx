@@ -6,7 +6,6 @@ import { useParams, useRouter } from 'next/navigation';
 import { useTranslation } from 'react-i18next';
 import Link from 'next/link';
 import Header from '@/components/Header';
-import { MOCK_COMMENTS, MOCK_STATUS_CHANGES } from '@/lib/mockData';
 import { useIssues } from '@/lib/issuesStore';
 import { useAuth } from '@/lib/useAuth';
 import { useUserCity } from '@/lib/useUserCity';
@@ -41,8 +40,8 @@ export default function IssuePage() {
   const proofFileRef = useRef<HTMLInputElement>(null);
   const akimatProofRef = useRef<HTMLInputElement>(null);
   const issue = issues.find(i => i.id === id);
-  const comments = MOCK_COMMENTS.filter(c => c.issue_id === id);
-  const statusHistory = MOCK_STATUS_CHANGES.filter(s => s.issue_id === id);
+  const comments: any[] = []; // будет загружаться из Supabase
+  const statusHistory: any[] = []; // будет загружаться из Supabase
 
   const confirmed = id ? confirmedIds.includes(id) : false;
   const [liked, setLiked] = useState(false);

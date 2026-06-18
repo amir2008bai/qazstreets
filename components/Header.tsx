@@ -9,7 +9,7 @@ import { useTranslation } from 'react-i18next';
 import {
   Sun, Moon, Bell, Globe, Map, BarChart2, Trophy, LayoutDashboard, Menu, X, User, LogOut
 } from 'lucide-react';
-import { MOCK_NOTIFICATIONS } from '@/lib/mockData';
+
 import NotificationsPanel from './NotificationsPanel';
 import { useAuth } from '@/lib/useAuth';
 
@@ -25,7 +25,7 @@ export default function Header() {
   // Тема резолвится только на клиенте — ждём монтирования, чтобы не было hydration mismatch
   useEffect(() => { setMounted(true); }, []);
 
-  const unread = MOCK_NOTIFICATIONS.filter(n => !n.read).length;
+  const unread = 0;
 
   const toggleLang = () => {
     i18n.changeLanguage(i18n.language === 'ru' ? 'en' : 'ru');

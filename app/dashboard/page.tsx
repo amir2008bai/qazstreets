@@ -5,7 +5,6 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import Link from 'next/link';
 import Header from '@/components/Header';
-import { MOCK_USERS } from '@/lib/mockData';
 import { useIssues } from '@/lib/issuesStore';
 import { useAuth } from '@/lib/useAuth';
 import { localCensorCheck } from '@/lib/aiCheck';
@@ -76,7 +75,7 @@ export default function DashboardPage() {
     done: akimatIssues.filter(i => i.status === 'done').length,
   };
 
-  const akimat = MOCK_USERS.find(u => u.role === 'akimat')!;
+  // akimatCity берётся из реального сеанса через useAuth
 
   return (
     <div className="min-h-screen" style={{ background: 'var(--surface)' }}>
@@ -95,7 +94,7 @@ export default function DashboardPage() {
                   {t('dashboard.title')}
                 </h1>
                 <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-                  🏛️ {akimatCity ?? akimat.city}
+                  🏛️ {akimatCity ?? 'Акимат'}
                 </p>
               </div>
             </div>

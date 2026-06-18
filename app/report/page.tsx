@@ -13,7 +13,7 @@ import { useIssues } from '@/lib/issuesStore';
 import { useUserCity } from '@/lib/useUserCity';
 import { nearestCity, distanceKm, CITIES } from '@/lib/cities';
 import { checkIssueWithAI, type AICheckResult } from '@/lib/aiCheck';
-import { MOCK_USERS } from '@/lib/mockData';
+import { useAuth } from '@/lib/useAuth';
 
 const ASSIGNED_OPTIONS: { value: AssignedTo; labelRu: string; labelEn: string }[] = [
   { value: 'akimat', labelRu: 'Акимат', labelEn: 'Akimat' },
@@ -363,6 +363,7 @@ export default function ReportPage() {
   const lang: 'ru' | 'en' = isRu ? 'ru' : 'en';
   const { issues, addIssue } = useIssues();
   const { userLat, userLng, city: userCity } = useUserCity();
+  const { user } = useAuth();
 
   const [step, setStep] = useState<'form'|'ai_check'|'blocked'|'geo_blocked'|'success'>('form');
   const [title, setTitle] = useState('');
@@ -383,7 +384,20 @@ export default function ReportPage() {
 
   // Создаёт объект заявки и кладёт в стор → она появляется на карте
   const publishIssue = () => {
-    const author = MOCK_USERS[0];
+    const author = {
+      id: user?.id ?? 'anonymous',
+      name: user?.name ?? 'Пользователь',
+      avatar_url: user?.image ?? null,
+      role: 'citizen' as const,
+      created_at: new Date().toISOString(),
+      phone: null,
+      email: user?.email ?? null,
+      city: '',
+      district: '',
+      points: 0,
+      issues_count: 0,
+      resolved_count: 0,
+    };
     const now = new Date().toISOString();
     // Город: из геокодера 2ГИС, иначе ближайший по координатам пина
     const detectedCity = location!.city || nearestCity(location!.lat, location!.lng).city.name;

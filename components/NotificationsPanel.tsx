@@ -4,7 +4,7 @@
 import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { X, Bell } from 'lucide-react';
-import { MOCK_NOTIFICATIONS } from '@/lib/mockData';
+
 import { formatDistanceToNow } from 'date-fns';
 import { ru, enUS } from 'date-fns/locale';
 import Link from 'next/link';
@@ -45,14 +45,14 @@ export default function NotificationsPanel({ onClose }: Props) {
         </button>
       </div>
 
-      {MOCK_NOTIFICATIONS.length === 0 ? (
+      {true ? (
         <div className="p-6 text-center text-sm" style={{ color: 'var(--text-secondary)' }}>
           <Bell size={32} className="mx-auto mb-2 opacity-30" />
           {t('notifications.empty')}
         </div>
       ) : (
         <div>
-          {MOCK_NOTIFICATIONS.map(n => (
+          {[].map((n: any) => (
             <Link
               key={n.id}
               href={`/issue/${n.issue_id}`}

@@ -9,7 +9,7 @@ import Link from 'next/link';
 import { ArrowLeft, Shield } from 'lucide-react';
 import { useAuth } from '@/lib/useAuth';
 import { useIssues } from '@/lib/issuesStore';
-import { getCitizenRank, MOCK_USERS } from '@/lib/mockData';
+import { getCitizenRank } from '@/lib/mockData';
 
 export default function ProfilePage() {
   const { t } = useTranslation('common');
@@ -25,19 +25,23 @@ export default function ProfilePage() {
   const [devCode, setDevCode] = useState('');
   const [showDevForm, setShowDevForm] = useState(false);
 
-  // Свой профиль помечается id 'me'. Любой другой id (u1..u6) — публичный профиль.
+  // Свой профиль помечается id 'me'. Любой другой id — публичный профиль.
   const isOwnProfile = viewedId === 'me' || (!!user?.id && viewedId === user.id);
-  const viewedUser = MOCK_USERS.find(u => u.id === viewedId);
 
-  // Для своего профиля используем данные Google, для чужого — моковые
-  const displayName = isOwnProfile ? (user?.name ?? 'Пользователь') : (viewedUser?.name ?? 'Пользователь');
-  const displayImage = isOwnProfile ? user?.image : viewedUser?.avatar_url;
-  const displayRole = isOwnProfile ? role : (viewedUser?.role ?? 'citizen');
+  // Для чужого профиля берём данные из реальных заявок
+  const viewedUserFromIssues = !isOwnProfile ? (() => {
+    const authorIssue = issues.find(i => i.author_id === viewedId);
+    return authorIssue?.author ?? null;
+  })() : null;
+
+  // Для своего профиля используем данные Google, для чужого — из заявок
+  const displayName = isOwnProfile ? (user?.name ?? 'Пользователь') : (viewedUserFromIssues?.name ?? 'Пользователь');
+  const displayImage = isOwnProfile ? user?.image : viewedUserFromIssues?.avatar_url;
+  const displayRole = isOwnProfile ? role : (viewedUserFromIssues?.role ?? 'citizen');
   const displayEmail = isOwnProfile ? user?.email : null;
 
-  // Статистика заявок этого пользователя (поданные).
-  // Свой профиль в демо связан с моковым u1 (чтобы было что показать).
-  const authorId = isOwnProfile ? 'u1' : viewedId;
+  // Статистика заявок этого пользователя
+  const authorId = isOwnProfile ? user?.id : viewedId;
   const userIssues = issues.filter(i => i.author_id === authorId);
   const resolved = userIssues.filter(i => i.status === 'done').length;
   const points = userIssues.length * 10 + resolved * 30;

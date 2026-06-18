@@ -5,8 +5,9 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import Link from 'next/link';
 import Header from '@/components/Header';
-import { MOCK_USERS, getCitizenRank, getVolunteerRank } from '@/lib/mockData';
 import { useIssues, computeDistrictScores, computeCityScores } from '@/lib/issuesStore';
+import { getCitizenRank, getVolunteerRank } from '@/lib/mockData';
+import { useAuth } from '@/lib/useAuth';
 import { Trophy, Medal } from 'lucide-react';
 
 type Tab = 'citizens' | 'volunteers' | 'cities' | 'districts';
@@ -18,23 +19,47 @@ export default function LeaderboardPage() {
   const [tab, setTab] = useState<Tab>('cities');
   const [scope, setScope] = useState<Scope>('city');
   const { issues } = useIssues();
+  const { user: currentUser } = useAuth();
   const [selectedCity, setSelectedCity] = useState<string>('Алматы');
 
   const cityScores = computeCityScores(issues);
   const allCities = Array.from(new Set(issues.map(i => i.city)));
   const districtScores = computeDistrictScores(issues, selectedCity);
 
-  const citizens = MOCK_USERS
+  // Собираем реальных пользователей из заявок
+  const usersMap = new Map<string, { id: string; name: string; avatar_url: string | null; role: string; points: number; issues_count: number; resolved_count: number }>();
+  issues.forEach(i => {
+    if (!i.author_id) return;
+    const existing = usersMap.get(i.author_id);
+    if (existing) {
+      existing.issues_count += 1;
+      existing.points += 1;
+      if (i.status === 'done') existing.resolved_count += 1;
+    } else {
+      usersMap.set(i.author_id, {
+        id: i.author_id,
+        name: i.author?.name ?? 'Пользователь',
+        avatar_url: i.author?.avatar_url ?? null,
+        role: i.author?.role ?? 'citizen',
+        points: 1,
+        issues_count: 1,
+        resolved_count: i.status === 'done' ? 1 : 0,
+      });
+    }
+  });
+  const allUsers = Array.from(usersMap.values());
+
+  const citizens = allUsers
     .filter(u => u.role === 'citizen')
     .sort((a, b) => b.points - a.points);
 
-  const volunteers = MOCK_USERS
+  const volunteers = allUsers
     .filter(u => u.role === 'volunteer')
     .sort((a, b) => b.points - a.points);
 
   const list = tab === 'citizens' ? citizens : volunteers;
 
-  const getRank = (user: typeof MOCK_USERS[0]) =>
+  const getRank = (user: typeof allUsers[0]) =>
     user.role === 'volunteer' ? getVolunteerRank(user.points) : getCitizenRank(user.points);
 
   const medalColors = ['#F59E0B', '#9CA3AF', '#D97706'];
@@ -253,7 +278,7 @@ export default function LeaderboardPage() {
           <div className="card overflow-hidden">
             {list.map((user, i) => {
               const rank = getRank(user);
-              const isCurrentUser = user.id === 'u1';
+              const isCurrentUser = user.id === currentUser?.id;
               return (
                 <Link
                   key={user.id}
