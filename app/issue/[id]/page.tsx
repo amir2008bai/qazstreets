@@ -40,8 +40,8 @@ export default function IssuePage() {
   const proofFileRef = useRef<HTMLInputElement>(null);
   const akimatProofRef = useRef<HTMLInputElement>(null);
   const issue = issues.find(i => i.id === id);
-  const comments: any[] = []; // будет загружаться из Supabase
-  const statusHistory: any[] = []; // будет загружаться из Supabase
+  const comments: { id: string; text: string; created_at: string; photos: string[]; author: { name: string; avatar_url: string | null; role: string } }[] = []; // будет загружаться из Supabase
+  const statusHistory: { id: string; new_status: string; created_at: string; note?: string; changed_by_user: { name: string } }[] = []; // будет загружаться из Supabase
 
   const confirmed = id ? confirmedIds.includes(id) : false;
   const [liked, setLiked] = useState(false);
@@ -548,7 +548,7 @@ export default function IssuePage() {
                 {t('issue.status_history')}
               </h2>
               <div className="space-y-3">
-                {statusHistory.map((change, i) => (
+                {statusHistory.map((change, i: number) => (
                   <div key={change.id} className="flex gap-3">
                     <div className="flex flex-col items-center">
                       <div
@@ -561,7 +561,7 @@ export default function IssuePage() {
                     </div>
                     <div className="pb-3">
                       <p className="text-xs font-semibold" style={{ color: 'var(--text)' }}>
-                        {STATUS_LABELS[change.new_status][isRu ? 'ru' : 'en']}
+                        {STATUS_LABELS[change.new_status as keyof typeof STATUS_LABELS][isRu ? 'ru' : 'en']}
                       </p>
                       {change.note && (
                         <p className="text-xs mt-0.5" style={{ color: 'var(--text-secondary)' }}>
@@ -638,7 +638,7 @@ export default function IssuePage() {
                     <p className="text-sm" style={{ color: 'var(--text)' }}>{c.text}</p>
                     {c.photos.length > 0 && (
                       <div className="mt-2 flex gap-2">
-                        {c.photos.map((p, i) => (
+                        {c.photos.map((p: string, i: number) => (
                           <img key={i} src={p} alt="" className="w-24 h-16 rounded-[8px] object-cover" />
                         ))}
                       </div>
