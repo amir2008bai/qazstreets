@@ -516,18 +516,18 @@ export default function IssuePage() {
               )}
             </div>
           )}
-          {/* Живая история переходов (с датой и временем) */}
-          {issue.history && issue.history.length > 0 && (
+          {/* Живая история переходов (из стора, с датой и временем) */}
+          {id && history[id] && history[id].length > 0 && (
             <div className="card p-5 mb-4">
               <h2 className="font-semibold text-sm mb-4" style={{ color: 'var(--text)' }}>
                 🕓 {t('issue.status_history')}
               </h2>
               <div className="space-y-3">
-                {issue.history.map((log, i) => (
+                {history[id].map((log, i) => (
                   <div key={i} className="flex gap-3">
                     <div className="flex flex-col items-center">
                       <div className="w-3 h-3 rounded-full border-2 border-white" style={{ background: STATUS_COLORS[log.status] }} />
-                      {i < issue.history!.length - 1 && <div className="w-0.5 flex-1 mt-1" style={{ background: 'var(--border)' }} />}
+                      {i < history[id].length - 1 && <div className="w-0.5 flex-1 mt-1" style={{ background: 'var(--border)' }} />}
                     </div>
                     <div className="pb-3">
                       <p className="text-xs font-semibold" style={{ color: 'var(--text)' }}>
