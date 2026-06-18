@@ -70,12 +70,12 @@ export default function StatsPage() {
     : 0;
 
   // Реальные волонтёры из заявок
-  const volunteerMap = new Map<string, { name: string; avatar_url: string | null; resolved_count: number; points: number }>();
+  const volunteerMap = new Map<string, { id: string; name: string; avatar_url: string | null; resolved_count: number; points: number }>();
   issues.filter(i => i.status === 'done' && i.resolver_id).forEach(i => {
     const key = i.resolver_id!;
     const ex = volunteerMap.get(key);
     if (ex) { ex.resolved_count++; ex.points++; }
-    else volunteerMap.set(key, { name: i.resolver_name ?? 'Волонтёр', avatar_url: null, resolved_count: 1, points: 1 });
+    else volunteerMap.set(key, { id: key, name: i.resolver_name ?? 'Волонтёр', avatar_url: null, resolved_count: 1, points: 1 });
   });
   const topVolunteers = Array.from(volunteerMap.values()).sort((a, b) => b.resolved_count - a.resolved_count).slice(0, 5);
 
