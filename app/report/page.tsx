@@ -126,21 +126,28 @@ function LocationPicker({ onLocationChange }: { onLocationChange: (lat: number, 
     map.setView([lat, lng], zoom ?? map.getZoom());
   }
 
-  // Обратное геокодирование: координаты → адрес (Photon reverse)
+  // Обратное геокодирование: координаты → адрес (Geoapify)
   function geocode(lat: number, lng: number) {
-    fetch(`https://photon.komoot.io/reverse?lat=${lat}&lon=${lng}&lang=${lang === 'kk' ? 'default' : lang}`)
+    const apiKey = process.env.NEXT_PUBLIC_GEOAPIFY_KEY;
+    const url = apiKey
+      ? `https://api.geoapify.com/v1/geocode/reverse?lat=${lat}&lon=${lng}&lang=${lang === 'kk' ? 'ru' : lang}&apiKey=${apiKey}`
+      : `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&accept-language=ru`;
+
+    fetch(url)
       .then(r => r.json())
       .then(data => {
-        const p = data?.features?.[0]?.properties ?? {};
-        const parts = [
-          p.name,
-          p.housenumber ? `${p.street ?? ''} ${p.housenumber}`.trim() : p.street,
-          p.district,
-          p.city || p.town || p.village,
-        ].filter(Boolean);
-        const addr = parts.join(', ') || `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
-        const city = p.city || p.town || p.village || p.county;
-        const district = p.district || p.suburb || p.neighbourhood;
+        let addr = '', city = '', district = '';
+        if (apiKey) {
+          const p = data?.features?.[0]?.properties ?? {};
+          addr = p.formatted || `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+          city = p.city || p.town || p.village || '';
+          district = p.district || p.suburb || '';
+        } else {
+          const a = data?.address ?? {};
+          addr = data?.display_name || `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+          city = a.city || a.town || a.village || '';
+          district = a.suburb || a.city_district || '';
+        }
         setAddress(addr);
         setQuery(addr);
         onLocationChange(lat, lng, addr, city, district);
@@ -152,20 +159,22 @@ function LocationPicker({ onLocationChange }: { onLocationChange: (lat: number, 
       });
   }
 
-  // Прямой поиск адреса (Photon — OSM геокодер, лучше Nominatim по СНГ)
+  // Прямой поиск адреса (Geoapify — хорошо знает Казахстан)
   async function searchAddress(text: string) {
     const q = text.trim();
     if (q.length < 2) { setSuggestions([]); return; }
 
-    // Привязка к центру карты — повышает релевантность по текущему городу
-    let lat = 51.1694, lon = 71.4491;
+    const apiKey = process.env.NEXT_PUBLIC_GEOAPIFY_KEY;
+    if (!apiKey) { setSuggestions([]); return; }
+
+    let lat = 53.2, lon = 63.6; // Костанай по умолчанию
     try {
       const c = mapRef.current?.getCenter?.();
       if (c) { lat = c.lat; lon = c.lng; }
     } catch {}
 
     try {
-      const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&lang=${lang === 'kk' ? 'default' : lang}&lat=${lat}&lon=${lon}&limit=10`;
+      const url = `https://api.geoapify.com/v1/geocode/autocomplete?text=${encodeURIComponent(q)}&lang=${lang === 'kk' ? 'ru' : lang}&filter=countrycode:kz&bias=proximity:${lon},${lat}&limit=8&apiKey=${apiKey}`;
       const r = await fetch(url);
       const data = await r.json();
       const feats: any[] = data?.features ?? [];
@@ -173,16 +182,11 @@ function LocationPicker({ onLocationChange }: { onLocationChange: (lat: number, 
       const sugs: Suggestion[] = feats.map(f => {
         const p = f.properties ?? {};
         const coords = f.geometry?.coordinates ?? [];
-        const parts = [
-          p.name,
-          p.housenumber ? `${p.street ?? ''} ${p.housenumber}`.trim() : p.street,
-          p.district,
-          p.city || p.town || p.village,
-        ].filter(Boolean);
-        const full = parts.join(', ') || p.name || '';
+        const name = [p.name, p.housenumber ? `${p.street ?? ''} ${p.housenumber}`.trim() : null]
+          .filter(Boolean).join(', ') || p.formatted?.split(',')[0] || '';
         return {
-          name: p.name || p.street || full,
-          full,
+          name,
+          full: p.formatted ?? name,
           lat: coords[1],
           lng: coords[0],
         };
