@@ -4,6 +4,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslation } from 'react-i18next';
+import { useTheme } from 'next-themes';
 import Header from '@/components/Header';
 import { CATEGORIES, DANGER_COLORS } from '@/types';
 import type { IssueCategory, DangerLevel, AssignedTo } from '@/types';
@@ -64,6 +65,7 @@ interface Suggestion {
 function LocationPicker({ onLocationChange }: { onLocationChange: (lat: number, lng: number, address: string, city?: string, district?: string) => void }) {
   const { t, i18n } = useTranslation('common');
   const lang = i18n.language || 'ru';
+  const { resolvedTheme } = useTheme();
   const el = useRef<HTMLDivElement>(null);
   const mapRef = useRef<any>(null);
   const markerRef = useRef<any>(null);
@@ -241,7 +243,13 @@ function LocationPicker({ onLocationChange }: { onLocationChange: (lat: number, 
       </div>
 
       <div className="relative rounded-[12px] overflow-hidden" style={{ height: 240 }}>
-        <div ref={el} className="absolute inset-0" style={{ zIndex: 0 }} />
+        <div ref={el} className={`absolute inset-0 ${resolvedTheme === 'dark' ? 'map-dark' : ''}`} style={{ zIndex: 0 }} />
+        <style>{`
+          .leaflet-tile-pane { transition: filter 0.3s; }
+          .map-dark .leaflet-tile-pane {
+            filter: invert(0.92) hue-rotate(180deg) brightness(0.95) contrast(0.88);
+          }
+        `}</style>
 
         <button
           onClick={gps}

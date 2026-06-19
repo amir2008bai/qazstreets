@@ -16,18 +16,10 @@ const DANGER_HEX: Record<DangerLevel, string> = {
   minor: '9CA3AF', moderate: 'FBBF24', dangerous: 'F97316', critical: 'EF4444',
 };
 
-// Тайлы карты: язык + тема
-function tileUrl(lang: string, dark: boolean): string {
-  if (dark) {
-    // Светло-серая тёмная тема как у 2GIS
-    return 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
-  }
-  // Светлая тема — выбираем язык
-  if (lang === 'en') {
-    return 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
-  }
-  // RU и KK — OSM (локальные названия)
-  return 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+// Одна карта (CartoDB Voyager) — без артефактов при переключении темы.
+// Светлая = voyager, тёмная = voyager но с CSS-затемнением через filter.
+function tileUrl(): string {
+  return 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
 }
 
 export default function Map({ issues, onReportClick }: Props) {
@@ -67,7 +59,7 @@ export default function Map({ issues, onReportClick }: Props) {
         center: [48.02, 66.92], zoom: 5,
         zoomControl: false, attributionControl: false,
       });
-      const tile = L.tileLayer(tileUrl(lang, resolvedTheme === 'dark'), { maxZoom: 19, subdomains: 'abcd' });
+      const tile = L.tileLayer(tileUrl(), { maxZoom: 19, subdomains: 'abcd' });
       tile.addTo(map);
       tileRef.current = tile;
       L.control.attribution({ position: 'bottomright', prefix: false }).addTo(map);
@@ -79,15 +71,14 @@ export default function Map({ issues, onReportClick }: Props) {
     return () => { if (mapRef.current) { mapRef.current.remove(); mapRef.current = null; } };
   }, []); // eslint-disable-line
 
-  // Смена темы / языка → меняем тайлы
+  // Тёмная тема — через CSS filter на тайлах (без перезагрузки = без артефактов)
+
+  // Тёмная тема — навешиваем класс на контейнер (фильтр только на тайлы)
   useEffect(() => {
-    if (!ready || !mapRef.current) return;
-    const L = (window as any).L;
-    if (tileRef.current) mapRef.current.removeLayer(tileRef.current);
-    const tile = L.tileLayer(tileUrl(lang, resolvedTheme === 'dark'), { maxZoom: 19, subdomains: 'abcd' });
-    tile.addTo(mapRef.current);
-    tileRef.current = tile;
-  }, [resolvedTheme, lang, ready]);
+    if (!container.current) return;
+    if (resolvedTheme === 'dark') container.current.classList.add('map-dark');
+    else container.current.classList.remove('map-dark');
+  }, [resolvedTheme, ready]);
 
   // Маркеры
   useEffect(() => {
@@ -137,6 +128,12 @@ export default function Map({ issues, onReportClick }: Props) {
   return (
     <div className="relative w-full h-full">
       <div ref={container} className="absolute inset-0" style={{ zIndex: 0 }} />
+      <style>{`
+        .leaflet-tile-pane { transition: filter 0.3s; }
+        .map-dark .leaflet-tile-pane {
+          filter: invert(0.92) hue-rotate(180deg) brightness(0.95) contrast(0.88);
+        }
+      `}</style>
 
       <div className="absolute top-16 left-4 right-4 z-20 flex gap-2 flex-wrap items-center">
         <select value={filterStatus} onChange={e => setFilterStatus(e.target.value as any)}
