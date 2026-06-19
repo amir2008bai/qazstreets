@@ -86,11 +86,12 @@ function LocationPicker({ onLocationChange }: { onLocationChange: (lat: number, 
       if (dead || !el.current) return;
       apiRef.current = L;
       const map = L.map(el.current, {
-        center: [51.1694, 71.4491],
-        zoom: 5,
-        zoomControl: true,
+        center: [53.21, 63.62], // Костанай по умолчанию
+        zoom: 12,
+        zoomControl: false,
         attributionControl: false,
       });
+      L.control.zoom({ position: 'bottomleft' }).addTo(map);
       L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
         maxZoom: 19, subdomains: 'abcd', keepBuffer: 4, updateWhenZooming: false, updateWhenIdle: true,
       }).addTo(map);
@@ -283,12 +284,13 @@ function LocationPicker({ onLocationChange }: { onLocationChange: (lat: number, 
           }
         `}</style>
 
+        {!showSug && (
         <button
           onClick={gps}
           disabled={locating}
           title={locating ? t('report_form.locating') : t('map.my_location')}
           aria-label={t('map.my_location')}
-          className="absolute top-2 left-2 z-[400] flex items-center gap-1.5 h-9 px-3 rounded-full text-xs font-semibold transition-all active:scale-95 disabled:cursor-wait"
+          className="absolute top-2 right-2 z-[400] flex items-center gap-1.5 h-9 px-3 rounded-full text-xs font-semibold transition-all active:scale-95 disabled:cursor-wait"
           style={{
             background: 'var(--bg)',
             border: '1px solid var(--border)',
@@ -299,6 +301,7 @@ function LocationPicker({ onLocationChange }: { onLocationChange: (lat: number, 
           {locating ? <Loader2 size={14} className="animate-spin" /> : <Navigation size={14} />}
           <span>{locating ? t('report_form.searching') : t('map.my_location')}</span>
         </button>
+        )}
 
         <div
           className="absolute bottom-2 left-1/2 -translate-x-1/2 px-3 py-1.5 rounded-full text-[11px] pointer-events-none whitespace-nowrap z-[400]"
