@@ -304,5 +304,3 @@ export default function Map({ issues, onReportClick }: Props) {
     </div>
   );
 }
-/ /   l e a f l e t   m a p  
- 
