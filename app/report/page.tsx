@@ -92,7 +92,7 @@ function LocationPicker({ onLocationChange }: { onLocationChange: (lat: number, 
         attributionControl: false,
       });
       L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-        maxZoom: 19, subdomains: 'abcd',
+        maxZoom: 19, subdomains: 'abcd', keepBuffer: 4, updateWhenZooming: false, updateWhenIdle: true,
       }).addTo(map);
       map.on('click', (e: any) => {
         const { lat, lng } = e.latlng;
@@ -126,15 +126,21 @@ function LocationPicker({ onLocationChange }: { onLocationChange: (lat: number, 
     map.setView([lat, lng], zoom ?? map.getZoom());
   }
 
-  // Обратное геокодирование: координаты → адрес (Nominatim)
+  // Обратное геокодирование: координаты → адрес (Photon reverse)
   function geocode(lat: number, lng: number) {
-    fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&accept-language=${lang}&zoom=18`)
+    fetch(`https://photon.komoot.io/reverse?lat=${lat}&lon=${lng}&lang=${lang === 'kk' ? 'default' : lang}`)
       .then(r => r.json())
       .then(data => {
-        const addr = data?.display_name || `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
-        const a = data?.address ?? {};
-        const city = a.city || a.town || a.village || a.county;
-        const district = a.suburb || a.city_district || a.neighbourhood || a.quarter;
+        const p = data?.features?.[0]?.properties ?? {};
+        const parts = [
+          p.name,
+          p.housenumber ? `${p.street ?? ''} ${p.housenumber}`.trim() : p.street,
+          p.district,
+          p.city || p.town || p.village,
+        ].filter(Boolean);
+        const addr = parts.join(', ') || `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+        const city = p.city || p.town || p.village || p.county;
+        const district = p.district || p.suburb || p.neighbourhood;
         setAddress(addr);
         setQuery(addr);
         onLocationChange(lat, lng, addr, city, district);
@@ -146,20 +152,42 @@ function LocationPicker({ onLocationChange }: { onLocationChange: (lat: number, 
       });
   }
 
-  // Прямой поиск адреса (Nominatim search)
+  // Прямой поиск адреса (Photon — OSM геокодер, лучше Nominatim по СНГ)
   async function searchAddress(text: string) {
     const q = text.trim();
     if (q.length < 2) { setSuggestions([]); return; }
+
+    // Привязка к центру карты — повышает релевантность по текущему городу
+    let lat = 51.1694, lon = 71.4491;
     try {
-      const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&accept-language=${lang}&countrycodes=kz&limit=8&addressdetails=1`;
+      const c = mapRef.current?.getCenter?.();
+      if (c) { lat = c.lat; lon = c.lng; }
+    } catch {}
+
+    try {
+      const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&lang=${lang === 'kk' ? 'default' : lang}&lat=${lat}&lon=${lon}&limit=10`;
       const r = await fetch(url);
-      const items: any[] = await r.json();
-      const sugs: Suggestion[] = items.map(it => ({
-        name: it.name || (it.display_name?.split(',')[0] ?? ''),
-        full: it.display_name ?? '',
-        lat: parseFloat(it.lat),
-        lng: parseFloat(it.lon),
-      })).filter(s => !isNaN(s.lat) && !isNaN(s.lng));
+      const data = await r.json();
+      const feats: any[] = data?.features ?? [];
+
+      const sugs: Suggestion[] = feats.map(f => {
+        const p = f.properties ?? {};
+        const coords = f.geometry?.coordinates ?? [];
+        const parts = [
+          p.name,
+          p.housenumber ? `${p.street ?? ''} ${p.housenumber}`.trim() : p.street,
+          p.district,
+          p.city || p.town || p.village,
+        ].filter(Boolean);
+        const full = parts.join(', ') || p.name || '';
+        return {
+          name: p.name || p.street || full,
+          full,
+          lat: coords[1],
+          lng: coords[0],
+        };
+      }).filter(s => typeof s.lat === 'number' && typeof s.lng === 'number');
+
       setSuggestions(sugs);
       setShowSug(true);
     } catch (err) {
