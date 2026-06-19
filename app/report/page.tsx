@@ -71,6 +71,7 @@ function LocationPicker({ onLocationChange }: { onLocationChange: (lat: number, 
   const markerRef = useRef<any>(null);
   const apiRef = useRef<any>(null);
   const debounceRef = useRef<any>(null);
+  const userPosRef = useRef<{ lat: number; lng: number } | null>(null);
 
   const [locating, setLocating] = useState(false);
   const [address, setAddress] = useState('');
@@ -102,15 +103,13 @@ function LocationPicker({ onLocationChange }: { onLocationChange: (lat: number, 
       });
       mapRef.current = map;
 
-      if (navigator.geolocation && 'permissions' in navigator) {
-        navigator.permissions.query({ name: 'geolocation' as PermissionName }).then(res => {
-          if (res.state === 'granted') {
-            navigator.geolocation.getCurrentPosition(pos => {
-              if (dead || !mapRef.current) return;
-              map.setView([pos.coords.latitude, pos.coords.longitude], 13);
-            }, () => {}, { enableHighAccuracy: false, timeout: 5000, maximumAge: 60000 });
-          }
-        }).catch(() => {});
+      // Запрашиваем геолокацию при открытии формы — для приоритета адресов по городу
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(pos => {
+          if (dead) return;
+          userPosRef.current = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+          if (mapRef.current) map.setView([pos.coords.latitude, pos.coords.longitude], 13);
+        }, () => {}, { enableHighAccuracy: false, timeout: 8000, maximumAge: 60000 });
       }
     });
 
@@ -160,7 +159,7 @@ function LocationPicker({ onLocationChange }: { onLocationChange: (lat: number, 
       });
   }
 
-  // Прямой поиск адреса (Geoapify — хорошо знает Казахстан)
+  // Прямой поиск адреса (Geoapify) с жёстким приоритетом города пользователя
   async function searchAddress(text: string) {
     const q = text.trim();
     if (q.length < 2) { setSuggestions([]); return; }
@@ -168,32 +167,58 @@ function LocationPicker({ onLocationChange }: { onLocationChange: (lat: number, 
     const apiKey = process.env.NEXT_PUBLIC_GEOAPIFY_KEY;
     if (!apiKey) { setSuggestions([]); return; }
 
-    let lat = 53.2, lon = 63.6; // Костанай по умолчанию
-    try {
-      const c = mapRef.current?.getCenter?.();
-      if (c) { lat = c.lat; lon = c.lng; }
-    } catch {}
+    // Точка привязки: реальная геолокация пользователя > центр карты > Костанай
+    let lat = 53.21, lon = 63.62;
+    if (userPosRef.current) {
+      lat = userPosRef.current.lat; lon = userPosRef.current.lng;
+    } else {
+      try { const c = mapRef.current?.getCenter?.(); if (c) { lat = c.lat; lon = c.lng; } } catch {}
+    }
+
+    const mapFeature = (f: any): Suggestion | null => {
+      const p = f.properties ?? {};
+      const coords = f.geometry?.coordinates ?? [];
+      if (typeof coords[1] !== 'number' || typeof coords[0] !== 'number') return null;
+      const name = [p.name, p.housenumber ? `${p.street ?? ''} ${p.housenumber}`.trim() : null]
+        .filter(Boolean).join(', ') || p.formatted?.split(',')[0] || '';
+      return { name, full: p.formatted ?? name, lat: coords[1], lng: coords[0] };
+    };
+
+    const lng2 = (la: number, lo: number, r: number) => {
+      // прямоугольник ~r км вокруг точки для filter=rect
+      const dLat = r / 111;
+      const dLon = r / (111 * Math.cos(la * Math.PI / 180));
+      return `${(lo - dLon).toFixed(4)},${(la - dLat).toFixed(4)},${(lo + dLon).toFixed(4)},${(la + dLat).toFixed(4)}`;
+    };
 
     try {
-      const url = `https://api.geoapify.com/v1/geocode/autocomplete?text=${encodeURIComponent(q)}&lang=${lang === 'kk' ? 'ru' : lang}&filter=countrycode:kz&bias=proximity:${lon},${lat}&limit=8&apiKey=${apiKey}`;
-      const r = await fetch(url);
-      const data = await r.json();
-      const feats: any[] = data?.features ?? [];
+      // 1) Сначала ищем ТОЛЬКО рядом с пользователем (радиус ~40 км = его город)
+      const nearUrl = `https://api.geoapify.com/v1/geocode/autocomplete?text=${encodeURIComponent(q)}&lang=${lang === 'kk' ? 'ru' : lang}&filter=rect:${lng2(lat, lon, 40)}&limit=8&apiKey=${apiKey}`;
+      let near: Suggestion[] = [];
+      try {
+        const r1 = await fetch(nearUrl);
+        const d1 = await r1.json();
+        near = (d1?.features ?? []).map(mapFeature).filter(Boolean) as Suggestion[];
+      } catch {}
 
-      const sugs: Suggestion[] = feats.map(f => {
-        const p = f.properties ?? {};
-        const coords = f.geometry?.coordinates ?? [];
-        const name = [p.name, p.housenumber ? `${p.street ?? ''} ${p.housenumber}`.trim() : null]
-          .filter(Boolean).join(', ') || p.formatted?.split(',')[0] || '';
-        return {
-          name,
-          full: p.formatted ?? name,
-          lat: coords[1],
-          lng: coords[0],
-        };
-      }).filter(s => typeof s.lat === 'number' && typeof s.lng === 'number');
+      // 2) Дополняем результатами по всему Казахстану (на случай если рядом ничего)
+      let wide: Suggestion[] = [];
+      try {
+        const wideUrl = `https://api.geoapify.com/v1/geocode/autocomplete?text=${encodeURIComponent(q)}&lang=${lang === 'kk' ? 'ru' : lang}&filter=countrycode:kz&bias=proximity:${lon},${lat}&limit=8&apiKey=${apiKey}`;
+        const r2 = await fetch(wideUrl);
+        const d2 = await r2.json();
+        wide = (d2?.features ?? []).map(mapFeature).filter(Boolean) as Suggestion[];
+      } catch {}
 
-      setSuggestions(sugs);
+      // Местные адреса всегда первыми, затем остальные (без дублей)
+      const seen = new Set<string>();
+      const merged = [...near, ...wide].filter(s => {
+        const k = `${s.lat.toFixed(4)}|${s.lng.toFixed(4)}`;
+        if (seen.has(k)) return false;
+        seen.add(k); return true;
+      }).slice(0, 8);
+
+      setSuggestions(merged);
       setShowSug(true);
     } catch (err) {
       console.error('[search] failed:', err);
