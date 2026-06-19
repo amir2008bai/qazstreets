@@ -27,6 +27,7 @@ export default function Map({ issues, onReportClick }: Props) {
   const mapRef = useRef<any>(null);
   const tileRef = useRef<any>(null);
   const markersRef = useRef<any[]>([]);
+  const clusterRef = useRef<any>(null);
   const userMarkerRef = useRef<any>(null);
   const { resolvedTheme } = useTheme();
   const { t, i18n } = useTranslation('common');
@@ -51,21 +52,39 @@ export default function Map({ issues, onReportClick }: Props) {
     link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
     document.head.appendChild(link);
 
+    // CSS для кластеров маркеров
+    const clusterCss = document.createElement('link');
+    clusterCss.rel = 'stylesheet';
+    clusterCss.href = 'https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css';
+    document.head.appendChild(clusterCss);
+
     const script = document.createElement('script');
     script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
     script.onload = () => {
+      // Подгружаем плагин кластеризации поверх Leaflet
+      const clusterScript = document.createElement('script');
+      clusterScript.src = 'https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js';
+      clusterScript.onload = () => initMap();
+      clusterScript.onerror = () => initMap(); // если плагин не загрузился — карта без кластеров
+      document.head.appendChild(clusterScript);
+    };
+
+    function initMap() {
+      if (!container.current) return;
       const L = (window as any).L;
       const map = L.map(container.current, {
         center: [48.02, 66.92], zoom: 5,
         zoomControl: false, attributionControl: false,
+        fadeAnimation: true, zoomAnimation: true,
+        preferCanvas: false,
       });
-      const tile = L.tileLayer(tileUrl(), { maxZoom: 19, subdomains: 'abcd' });
+      const tile = L.tileLayer(tileUrl(), { maxZoom: 19, subdomains: 'abcd', keepBuffer: 6, updateWhenZooming: false, updateWhenIdle: true, crossOrigin: true });
       tile.addTo(map);
       tileRef.current = tile;
       L.control.attribution({ position: 'bottomright', prefix: false }).addTo(map);
       mapRef.current = map;
       setReady(true);
-    };
+    }
     document.head.appendChild(script);
 
     return () => { if (mapRef.current) { mapRef.current.remove(); mapRef.current = null; } };
@@ -80,12 +99,32 @@ export default function Map({ issues, onReportClick }: Props) {
     else container.current.classList.remove('map-dark');
   }, [resolvedTheme, ready]);
 
-  // Маркеры
+  // Маркеры с кластеризацией
   useEffect(() => {
     if (!ready || !mapRef.current) return;
     const L = (window as any).L;
+
+    // Удаляем предыдущий слой (кластер или одиночные маркеры)
+    if (clusterRef.current) { mapRef.current.removeLayer(clusterRef.current); clusterRef.current = null; }
     markersRef.current.forEach(m => mapRef.current.removeLayer(m));
     markersRef.current = [];
+
+    // Группа кластеров (если плагин загружен), иначе обычный слой
+    const hasCluster = typeof L.markerClusterGroup === 'function';
+    const group = hasCluster
+      ? L.markerClusterGroup({
+          maxClusterRadius: 45,
+          showCoverageOnHover: false,
+          spiderfyOnMaxZoom: true,
+          iconCreateFunction: (cluster: any) => {
+            const count = cluster.getChildCount();
+            return L.divIcon({
+              html: `<div style="display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:50%;background:#FC3F1D;color:white;font-weight:700;font-size:14px;border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.3)">${count}</div>`,
+              className: '', iconSize: [40, 40],
+            });
+          },
+        })
+      : null;
 
     filtered.forEach(issue => {
       const cat = CATEGORIES.find(c => c.id === issue.category);
@@ -98,11 +137,13 @@ export default function Map({ issues, onReportClick }: Props) {
         <text x="22" y="29" text-anchor="middle" font-size="18">${emoji}</text>
       </svg>`;
       const icon = L.divIcon({ html: svg, iconSize: [44, 54], iconAnchor: [22, 54], className: '' });
-      const marker = L.marker([issue.lat, issue.lng], { icon })
-        .addTo(mapRef.current)
-        .on('click', () => setSelected(issue));
-      markersRef.current.push(marker);
+      const marker = L.marker([issue.lat, issue.lng], { icon }).on('click', () => setSelected(issue));
+
+      if (group) group.addLayer(marker);
+      else { marker.addTo(mapRef.current); markersRef.current.push(marker); }
     });
+
+    if (group) { group.addTo(mapRef.current); clusterRef.current = group; }
   }, [ready, filtered.length, filterStatus, filterCat]); // eslint-disable-line
 
   const goToMe = () => {
@@ -166,12 +207,15 @@ export default function Map({ issues, onReportClick }: Props) {
         )}
       </div>
 
+      {/* Счётчик заявок — отдельно под фильтрами */}
       <div className="absolute top-28 left-4 z-10">
-        <div className="h-7 px-3 rounded-lg flex items-center text-xs border shadow-sm"
+        <div className="h-7 px-3 rounded-lg flex items-center text-xs font-medium border shadow-sm"
           style={{ background: bg, color: textSec, borderColor: border }}>
           {filtered.length} {t('map.issues_count')}
         </div>
       </div>
+
+
 
       <div className="absolute right-4 bottom-32 z-10 flex flex-col gap-2">
         <button onClick={goToMe}
