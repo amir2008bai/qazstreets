@@ -37,14 +37,17 @@ const PIN = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(
   </svg>`
 )}`;
 
-function load2GIS(): Promise<any> {
-  return new Promise((resolve, reject) => {
-    if ((window as any).mapgl) { resolve((window as any).mapgl); return; }
+function loadLeaflet(): Promise<any> {
+  return new Promise((resolve) => {
+    if ((window as any).L) { resolve((window as any).L); return; }
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+    document.head.appendChild(link);
     const s = document.createElement('script');
-    s.src = 'https://mapgl.2gis.com/api/js/v1';
+    s.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
     s.async = true;
-    s.onload = () => resolve((window as any).mapgl);
-    s.onerror = () => reject(new Error('2GIS script failed'));
+    s.onload = () => resolve((window as any).L);
     document.head.appendChild(s);
   });
 }
@@ -56,10 +59,11 @@ interface Suggestion {
   lng: number;
 }
 
-// ─── Мини-карта с поиском адреса ──────────────────────────────────────────────
+// ─── Мини-карта с поиском адреса (OpenStreetMap + Nominatim) ──────────────────
 
 function LocationPicker({ onLocationChange }: { onLocationChange: (lat: number, lng: number, address: string, city?: string, district?: string) => void }) {
-  const { t } = useTranslation('common');
+  const { t, i18n } = useTranslation('common');
+  const lang = i18n.language || 'ru';
   const el = useRef<HTMLDivElement>(null);
   const mapRef = useRef<any>(null);
   const markerRef = useRef<any>(null);
@@ -71,63 +75,64 @@ function LocationPicker({ onLocationChange }: { onLocationChange: (lat: number, 
   const [query, setQuery] = useState('');
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [showSug, setShowSug] = useState(false);
-  const token = process.env.NEXT_PUBLIC_2GIS_TOKEN;
 
   useEffect(() => {
-    if (!el.current || mapRef.current || !token) return;
+    if (!el.current || mapRef.current) return;
     let dead = false;
 
-    load2GIS().then(mapgl => {
+    loadLeaflet().then(L => {
       if (dead || !el.current) return;
-      apiRef.current = mapgl;
-      const map = new mapgl.Map(el.current, {
-        center: [71.4491, 51.1694], // Астана как нейтральный центр Казахстана
-        zoom: 5,                     // показываем всю страну, дальше карта подстроится под пользователя
-        key: token,
+      apiRef.current = L;
+      const map = L.map(el.current, {
+        center: [51.1694, 71.4491],
+        zoom: 5,
+        zoomControl: true,
+        attributionControl: false,
       });
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+        maxZoom: 19, subdomains: 'abcd',
+      }).addTo(map);
       map.on('click', (e: any) => {
-        const [lng, lat] = e.lngLat;
-        setPin(mapgl, map, lng, lat, 16);
+        const { lat, lng } = e.latlng;
+        setPin(L, map, lng, lat, 16);
         geocode(lat, lng);
       });
       mapRef.current = map;
 
-      // Подтягиваем геолокацию пользователя при открытии формы (если уже разрешена),
-      // чтобы поиск адресов искал рядом с ним, а не где-то по умолчанию.
       if (navigator.geolocation && 'permissions' in navigator) {
         navigator.permissions.query({ name: 'geolocation' as PermissionName }).then(res => {
           if (res.state === 'granted') {
             navigator.geolocation.getCurrentPosition(pos => {
               if (dead || !mapRef.current) return;
-              map.setCenter([pos.coords.longitude, pos.coords.latitude]);
-              map.setZoom(13);
-            }, () => {}, { enableHighAccuracy: false, timeout: 5000, maximumAge: 60_000 });
+              map.setView([pos.coords.latitude, pos.coords.longitude], 13);
+            }, () => {}, { enableHighAccuracy: false, timeout: 5000, maximumAge: 60000 });
           }
         }).catch(() => {});
       }
     });
 
-    return () => { dead = true; markerRef.current?.destroy(); mapRef.current?.destroy(); mapRef.current = null; };
-  }, [token]); // eslint-disable-line
+    return () => { dead = true; if (mapRef.current) { mapRef.current.remove(); mapRef.current = null; } };
+  }, []); // eslint-disable-line
 
-  function setPin(api: any, map: any, lng: number, lat: number, zoom?: number) {
-    markerRef.current?.destroy();
-    markerRef.current = new api.Marker(map, { coordinates: [lng, lat], icon: PIN, anchor: [18, 44] });
-    map.setCenter([lng, lat]);
-    if (zoom) map.setZoom(zoom);
+  function setPin(L: any, map: any, lng: number, lat: number, zoom?: number) {
+    if (markerRef.current) map.removeLayer(markerRef.current);
+    const icon = L.divIcon({
+      html: `<svg xmlns="http://www.w3.org/2000/svg" width="36" height="44" viewBox="0 0 36 44"><path d="M18 0C8 0 0 8 0 18c0 13.5 18 26 18 26S36 31.5 36 18C36 8 28 0 18 0z" fill="#FC3F1D"/><circle cx="18" cy="18" r="7" fill="white"/></svg>`,
+      iconSize: [36, 44], iconAnchor: [18, 44], className: '',
+    });
+    markerRef.current = L.marker([lat, lng], { icon }).addTo(map);
+    map.setView([lat, lng], zoom ?? map.getZoom());
   }
 
-  // Обратное геокодирование: координаты → адрес
+  // Обратное геокодирование: координаты → адрес (Nominatim)
   function geocode(lat: number, lng: number) {
-    fetch(`https://catalog.api.2gis.com/3.0/items/geocode?lat=${lat}&lon=${lng}&fields=items.point,items.adm_div,items.address,items.full_address_name&key=${token}`)
+    fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&accept-language=${lang}&zoom=18`)
       .then(r => r.json())
       .then(data => {
-        const item = data?.result?.items?.[0];
-        const addr = item?.full_name || item?.full_address_name || item?.address_name || item?.name || `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
-        // adm_div: массив административных уровней. city — уровень city, district — уровень district/settlement
-        const adm: any[] = item?.adm_div ?? [];
-        const city = adm.find(a => a.type === 'city')?.name?.replace(/^г\.?\s*/i, '');
-        const district = adm.find(a => a.type === 'district' || a.type === 'district_area' || a.type === 'settlement')?.name;
+        const addr = data?.display_name || `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+        const a = data?.address ?? {};
+        const city = a.city || a.town || a.village || a.county;
+        const district = a.suburb || a.city_district || a.neighbourhood || a.quarter;
         setAddress(addr);
         setQuery(addr);
         onLocationChange(lat, lng, addr, city, district);
@@ -139,88 +144,24 @@ function LocationPicker({ onLocationChange }: { onLocationChange: (lat: number, 
       });
   }
 
-  // Прямой поиск адреса по тексту (подсказки)
-  // Стратегия: Suggest API (быстрые подсказки) + fallback на Places API (большой каталог),
-  // оба с привязкой к центру карты — это сильно повышает релевантность по Казахстану.
+  // Прямой поиск адреса (Nominatim search)
   async function searchAddress(text: string) {
     const q = text.trim();
     if (q.length < 2) { setSuggestions([]); return; }
-
-    // Берём текущий центр карты как точку привязки поиска
-    let lon = 71.4491, lat = 51.1694; // Астана по умолчанию
     try {
-      const c = mapRef.current?.getCenter?.();
-      if (Array.isArray(c) && c.length === 2) { lon = c[0]; lat = c[1]; }
-    } catch {}
-
-    const locParam = `location=${lon},${lat}&radius=40000`; // 40 км вокруг центра карты
-
-    const mapItem = (it: any): Suggestion | null => {
-      const point = it.point || it.geometry?.centroid_point;
-      if (!point) return null;
-      const ptLat = point.lat ?? point.latitude;
-      const ptLng = point.lon ?? point.lng ?? point.longitude;
-      if (typeof ptLat !== 'number' || typeof ptLng !== 'number') return null;
-      const full = it.full_name || it.full_address_name || it.address_name || it.name || '';
-      return {
-        name: it.name || it.address_name || full,
-        full: full || it.name || '',
-        lat: ptLat,
-        lng: ptLng,
-      };
-    };
-
-    try {
-      // 1) Suggest API — быстрые автоподсказки
-      const suggestUrl =
-        `https://catalog.api.2gis.com/3.0/suggests` +
-        `?q=${encodeURIComponent(q)}` +
-        `&fields=items.point,items.adm_div,items.address,items.full_address_name` +
-        `&suggest_type=address` +
-        `&${locParam}` +
-        `&key=${token}`;
-
-      let sugs: Suggestion[] = [];
-      try {
-        const r1 = await fetch(suggestUrl);
-        const d1 = await r1.json();
-        const items1: any[] = d1?.result?.items ?? [];
-        sugs = items1.map(mapItem).filter(Boolean) as Suggestion[];
-      } catch {
-        // игнорируем — пойдём в fallback
-      }
-
-      // 2) Если Suggest пустой — пробуем Places API: больше зданий, улиц и компаний
-      if (sugs.length === 0) {
-        const placesUrl =
-          `https://catalog.api.2gis.com/3.0/items` +
-          `?q=${encodeURIComponent(q)}` +
-          `&fields=items.point,items.adm_div,items.address,items.full_address_name` +
-          `&type=building,street,attraction,branch` +
-          `&sort=distance` +
-          `&${locParam}` +
-          `&page_size=10` +
-          `&key=${token}`;
-        try {
-          const r2 = await fetch(placesUrl);
-          const d2 = await r2.json();
-          const items2: any[] = d2?.result?.items ?? [];
-          sugs = items2.map(mapItem).filter(Boolean) as Suggestion[];
-        } catch {}
-      }
-
-      // Дедуп по координатам + текст
-      const seen = new Set<string>();
-      const unique = sugs.filter(s => {
-        const k = `${s.lat.toFixed(5)}|${s.lng.toFixed(5)}|${s.full}`;
-        if (seen.has(k)) return false;
-        seen.add(k); return true;
-      }).slice(0, 8);
-
-      setSuggestions(unique);
+      const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&accept-language=${lang}&countrycodes=kz&limit=8&addressdetails=1`;
+      const r = await fetch(url);
+      const items: any[] = await r.json();
+      const sugs: Suggestion[] = items.map(it => ({
+        name: it.name || (it.display_name?.split(',')[0] ?? ''),
+        full: it.display_name ?? '',
+        lat: parseFloat(it.lat),
+        lng: parseFloat(it.lon),
+      })).filter(s => !isNaN(s.lat) && !isNaN(s.lng));
+      setSuggestions(sugs);
       setShowSug(true);
     } catch (err) {
-      console.error('[2GIS search] failed:', err);
+      console.error('[search] failed:', err);
       setSuggestions([]);
     }
   }
@@ -228,7 +169,7 @@ function LocationPicker({ onLocationChange }: { onLocationChange: (lat: number, 
   function onQueryChange(text: string) {
     setQuery(text);
     clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => searchAddress(text), 220);
+    debounceRef.current = setTimeout(() => searchAddress(text), 400);
   }
 
   function pickSuggestion(s: Suggestion) {
@@ -236,7 +177,6 @@ function LocationPicker({ onLocationChange }: { onLocationChange: (lat: number, 
     setAddress(s.full);
     setShowSug(false);
     setSuggestions([]);
-    // Геокодируем точку чтобы получить город+район из adm_div
     geocode(s.lat, s.lng);
     if (mapRef.current && apiRef.current) {
       setPin(apiRef.current, mapRef.current, s.lng, s.lat, 17);
@@ -249,7 +189,7 @@ function LocationPicker({ onLocationChange }: { onLocationChange: (lat: number, 
       pos => {
         const { latitude: lat, longitude: lng } = pos.coords;
         if (mapRef.current && apiRef.current) {
-          setPin(apiRef.current, mapRef.current, lng, lat, 17); // близкий зум до домов
+          setPin(apiRef.current, mapRef.current, lng, lat, 17);
         }
         geocode(lat, lng);
         setLocating(false);
@@ -259,18 +199,8 @@ function LocationPicker({ onLocationChange }: { onLocationChange: (lat: number, 
     );
   }
 
-  if (!token) {
-    return (
-      <div className="w-full h-48 rounded-[12px] flex items-center justify-center border-2 border-dashed"
-        style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
-        <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>🗺️ {t('report_form.need_token')}</p>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-2">
-      {/* Поиск адреса */}
       <div className="relative">
         <div className="flex items-center gap-2 px-3 py-2.5 rounded-[12px] border"
           style={{ background: 'var(--bg)', borderColor: 'var(--border)' }}>
@@ -292,7 +222,6 @@ function LocationPicker({ onLocationChange }: { onLocationChange: (lat: number, 
           )}
         </div>
 
-        {/* Выпадающие подсказки */}
         {showSug && suggestions.length > 0 && (
           <div className="absolute top-full left-0 right-0 mt-1 rounded-[12px] shadow-popup border overflow-hidden z-30 max-h-64 overflow-y-auto"
             style={{ background: 'var(--bg)', borderColor: 'var(--border)' }}>
@@ -311,17 +240,15 @@ function LocationPicker({ onLocationChange }: { onLocationChange: (lat: number, 
         )}
       </div>
 
-      {/* Карта */}
       <div className="relative rounded-[12px] overflow-hidden" style={{ height: 240 }}>
-        <div ref={el} className="absolute inset-0" />
+        <div ref={el} className="absolute inset-0" style={{ zIndex: 0 }} />
 
-        {/* Кнопка "Где я" — слева сверху, чтобы не пересекаться с зумом 2ГИС (он справа) */}
         <button
           onClick={gps}
           disabled={locating}
           title={locating ? t('report_form.locating') : t('map.my_location')}
           aria-label={t('map.my_location')}
-          className="absolute top-2 left-2 z-20 flex items-center gap-1.5 h-9 px-3 rounded-full text-xs font-semibold transition-all active:scale-95 disabled:cursor-wait"
+          className="absolute top-2 left-2 z-[400] flex items-center gap-1.5 h-9 px-3 rounded-full text-xs font-semibold transition-all active:scale-95 disabled:cursor-wait"
           style={{
             background: 'var(--bg)',
             border: '1px solid var(--border)',
@@ -333,16 +260,14 @@ function LocationPicker({ onLocationChange }: { onLocationChange: (lat: number, 
           <span>{locating ? t('report_form.searching') : t('map.my_location')}</span>
         </button>
 
-        {/* Подсказка снизу — компактнее и по центру, не мешает контролам 2ГИС */}
         <div
-          className="absolute bottom-2 left-1/2 -translate-x-1/2 px-3 py-1.5 rounded-full text-[11px] pointer-events-none whitespace-nowrap"
+          className="absolute bottom-2 left-1/2 -translate-x-1/2 px-3 py-1.5 rounded-full text-[11px] pointer-events-none whitespace-nowrap z-[400]"
           style={{ background: 'rgba(0,0,0,0.6)', color: 'white', backdropFilter: 'blur(4px)' }}
         >
           {t('report_form.map_hint')}
         </div>
       </div>
 
-      {/* Выбранный адрес */}
       {address && (
         <div className="flex items-start gap-2 px-3 py-2.5 rounded-[10px] text-sm"
           style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>

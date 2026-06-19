@@ -16,10 +16,17 @@ const DANGER_HEX: Record<DangerLevel, string> = {
   minor: '9CA3AF', moderate: 'FBBF24', dangerous: 'F97316', critical: 'EF4444',
 };
 
-// Тайлы с поддержкой языков
-function getTileUrl(lang: string, dark: boolean) {
-  if (dark) return 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
-  if (lang === 'kk') return 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+// Тайлы карты: язык + тема
+function tileUrl(lang: string, dark: boolean): string {
+  if (dark) {
+    // Светло-серая тёмная тема как у 2GIS
+    return 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
+  }
+  // Светлая тема — выбираем язык
+  if (lang === 'en') {
+    return 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
+  }
+  // RU и KK — OSM (локальные названия)
   return 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
 }
 
@@ -31,6 +38,7 @@ export default function Map({ issues, onReportClick }: Props) {
   const userMarkerRef = useRef<any>(null);
   const { resolvedTheme } = useTheme();
   const { t, i18n } = useTranslation('common');
+  const lang = i18n.language || 'ru';
 
   const [selected, setSelected] = useState<Issue | null>(null);
   const [filterStatus, setFilterStatus] = useState<IssueStatus | 'all'>('all');
@@ -43,7 +51,6 @@ export default function Map({ issues, onReportClick }: Props) {
     return true;
   });
 
-  // Инициализация карты
   useEffect(() => {
     if (mapRef.current || !container.current) return;
 
@@ -60,7 +67,7 @@ export default function Map({ issues, onReportClick }: Props) {
         center: [48.02, 66.92], zoom: 5,
         zoomControl: false, attributionControl: false,
       });
-      const tile = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 });
+      const tile = L.tileLayer(tileUrl(lang, resolvedTheme === 'dark'), { maxZoom: 19, subdomains: 'abcd' });
       tile.addTo(map);
       tileRef.current = tile;
       L.control.attribution({ position: 'bottomright', prefix: false }).addTo(map);
@@ -70,22 +77,17 @@ export default function Map({ issues, onReportClick }: Props) {
     document.head.appendChild(script);
 
     return () => { if (mapRef.current) { mapRef.current.remove(); mapRef.current = null; } };
-  }, []);
+  }, []); // eslint-disable-line
 
-  // Тёмная тема
+  // Смена темы / языка → меняем тайлы
   useEffect(() => {
     if (!ready || !mapRef.current) return;
     const L = (window as any).L;
     if (tileRef.current) mapRef.current.removeLayer(tileRef.current);
-    const dark = resolvedTheme === 'dark';
-    const tile = L.tileLayer(
-      dark ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
-           : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-      { maxZoom: 19 }
-    );
+    const tile = L.tileLayer(tileUrl(lang, resolvedTheme === 'dark'), { maxZoom: 19, subdomains: 'abcd' });
     tile.addTo(mapRef.current);
     tileRef.current = tile;
-  }, [resolvedTheme, ready]);
+  }, [resolvedTheme, lang, ready]);
 
   // Маркеры
   useEffect(() => {
@@ -112,7 +114,6 @@ export default function Map({ issues, onReportClick }: Props) {
     });
   }, [ready, filtered.length, filterStatus, filterCat]); // eslint-disable-line
 
-  // Геолокация
   const goToMe = () => {
     if (!navigator.geolocation || !mapRef.current) return;
     navigator.geolocation.getCurrentPosition(p => {
@@ -128,7 +129,6 @@ export default function Map({ issues, onReportClick }: Props) {
     });
   };
 
-  const dark = resolvedTheme === 'dark';
   const bg = 'var(--bg)';
   const border = 'var(--border)';
   const text = 'var(--text)';
@@ -138,7 +138,6 @@ export default function Map({ issues, onReportClick }: Props) {
     <div className="relative w-full h-full">
       <div ref={container} className="absolute inset-0" style={{ zIndex: 0 }} />
 
-      {/* Фильтры */}
       <div className="absolute top-16 left-4 right-4 z-20 flex gap-2 flex-wrap items-center">
         <select value={filterStatus} onChange={e => setFilterStatus(e.target.value as any)}
           className="h-9 px-3 rounded-xl text-xs font-semibold border shadow-sm"
@@ -153,7 +152,7 @@ export default function Map({ issues, onReportClick }: Props) {
         <div className="flex gap-1.5">
           {CATEGORIES.slice(0, 6).map(cat => (
             <button key={cat.id} onClick={() => setFilterCat(filterCat === cat.id ? 'all' : cat.id)}
-              title={cat.labelRu}
+              title={lang === 'en' ? cat.labelEn : cat.labelRu}
               className="w-9 h-9 rounded-xl flex items-center justify-center text-lg border shadow-sm hover:scale-110 transition-transform"
               style={{ background: filterCat === cat.id ? '#FC3F1D' : bg, borderColor: filterCat === cat.id ? '#FC3F1D' : border }}>
               {cat.emoji}
@@ -170,7 +169,6 @@ export default function Map({ issues, onReportClick }: Props) {
         )}
       </div>
 
-      {/* Счётчик */}
       <div className="absolute top-28 left-4 z-10">
         <div className="h-7 px-3 rounded-lg flex items-center text-xs border shadow-sm"
           style={{ background: bg, color: textSec, borderColor: border }}>
@@ -178,38 +176,23 @@ export default function Map({ issues, onReportClick }: Props) {
         </div>
       </div>
 
-      {/* Правая панель кнопок */}
       <div className="absolute right-4 bottom-32 z-10 flex flex-col gap-2">
-        {/* Геолокация — всегда видна */}
         <button onClick={goToMe}
           className="w-11 h-11 rounded-xl border shadow-md flex items-center justify-center text-xl hover:scale-105 transition-transform"
-          style={{ background: bg, borderColor: border }}
-          title={t('map.my_location')}>
-          📍
-        </button>
-
-        {/* Зум + */}
+          style={{ background: bg, borderColor: border }} title={t('map.my_location')}>📍</button>
         <button onClick={() => mapRef.current?.setZoom((mapRef.current.getZoom() ?? 5) + 1)}
           className="w-11 h-11 rounded-xl border shadow-md flex items-center justify-center text-xl font-bold hover:scale-105 transition-transform"
-          style={{ background: bg, borderColor: border, color: text }}>
-          +
-        </button>
-
-        {/* Зум - */}
+          style={{ background: bg, borderColor: border, color: text }}>+</button>
         <button onClick={() => mapRef.current?.setZoom(Math.max((mapRef.current.getZoom() ?? 5) - 1, 2))}
           className="w-11 h-11 rounded-xl border shadow-md flex items-center justify-center text-xl font-bold hover:scale-105 transition-transform"
-          style={{ background: bg, borderColor: border, color: text }}>
-          −
-        </button>
+          style={{ background: bg, borderColor: border, color: text }}>−</button>
       </div>
 
-      {/* Кнопка подать заявку */}
       <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-10">
         <button onClick={onReportClick}
           className="btn-accent px-8 py-3.5 flex items-center gap-2 text-sm font-bold rounded-2xl"
           style={{ boxShadow: '0 6px 28px rgba(252,63,29,0.45)' }}>
-          <span className="text-xl leading-none">+</span>
-          {t('report_btn')}
+          <span className="text-xl leading-none">+</span>{t('report_btn')}
         </button>
       </div>
 
